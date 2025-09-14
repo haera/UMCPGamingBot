@@ -9,7 +9,7 @@ from .util import SpamLimit, partition, make_keypad, parse_keypad
 
 
 def check_is_admin(ctx: commands.Context):
-    return ctx.message.author.id in ctx.command.cog.db.admins_cache
+    return ctx.message.author.id in ctx.command.cog.db.admins
 
 
 def check_in_command_channel(ctx: commands.Context):
@@ -94,6 +94,27 @@ class UMCPBot(commands.Cog):
         except db.DBError as e:
             await ctx.send(str(e))
 
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def registersubgame(self, ctx: commands.Context, sub_game_name: str, parent_game_name: str):
+        """Links a role as the sub game of another.
+
+        <sub_game> => The name of the sub game
+        <parent_game> => The name of the parent game to link the sub game to
+        """
+        sub_game = self.db.get_game(sub_game_name, check_alias=True)
+        parent_game = self.db.get_game(parent_game_name, check_alias=True)
+        if not sub_game or not parent_game:
+            await ctx.send(f"'{sub_game_name}' and/or '{parent_game_name}' are not valid games.")
+            return
+
+        success = self.db.add_sub_game(sub_game.game_id, parent_game.game_id)
+        if success:
+            await ctx.message.add_reaction("✅")
+        else:
+            await ctx.send(f"'{sub_game_name}' already belongs to a different game.")
+
+
     """
     Old Role Assignment
     """
@@ -101,8 +122,8 @@ class UMCPBot(commands.Cog):
     @commands.check(check_in_command_channel)
     async def games(self, ctx: commands.Context):
         """Lists all games available to add"""
-        game_names = (name for name, id in self.db.games_cache.values())
-        await ctx.send("Games:\n" + "\n".join(sorted(game_names)))
+        game_names = (game.name for game in self.db.games.values())
+        await ctx.send("Games:\n" + "\n".join(sorted(game_names, key=str.casefold)))
 
     @commands.command()
     @commands.check(check_in_command_channel)
@@ -123,13 +144,12 @@ class UMCPBot(commands.Cog):
         await self.set_games(ctx, games.split(","), add=False)
 
     async def set_games(self, ctx: commands.Context, games: List[str], add: bool):
-        game_ids = (self.db.get_game_id(game.strip(), check_alias=True) for game in games)
-        valid, invalid = partition(enumerate(game_ids), lambda x: x[1] is None)
+        game_objs = (self.db.get_game(game.strip(), check_alias=True) for game in games)
+        valid, invalid = partition(enumerate(game_objs), lambda x: x[1] is None)
 
         if valid:
-            valid_games = [self.db.games_cache[id] for x, id in valid]
-            roles = (self.umcp_server.get_role(role_id) for name, role_id in valid_games)
-            valid_names = ', '.join(name for name, _ in valid_games)
+            roles = (self.umcp_server.get_role(game.role_id) for i, game in valid)
+            valid_names = ', '.join(game.name for i, game in valid)
             if add:
                 await ctx.author.add_roles(*roles)
                 await ctx.send(f"Added games: {valid_names} to {ctx.author.mention}")
@@ -138,30 +158,30 @@ class UMCPBot(commands.Cog):
                 await ctx.send(f"Removed games: {valid_names} from {ctx.author.mention}")
 
         if invalid:
-            invalid_names = ', '.join(games[x] for x, _ in invalid)
+            invalid_names = ', '.join(games[i] for i, _ in invalid)
             await ctx.send(f"Could not find games: {invalid_names}")
 
     """
     New Role Assignment
     """
-    def games_to_ids(self, games: List[str]) -> Tuple[List[int], List[str]]:
+    def names_to_games(self, games: List[str]) -> Tuple[List[db.Game], List[str]]:
         """Convert a list of game/alias names to a list of game row ids.
 
         Args:
             games (str): The comma seperated list of game/alias names
 
         Returns:
-            List[int]: The list of game row ids
+            List[db.Game]: The list of game row ids
             List[str]: The games that could not be found
         """
         game_ids = []
         not_found = []
-        for game in games:
-            id: Optional[int] = self.db.get_game_id(game, check_alias=True)
-            if id is not None:
-                game_ids.append(id)
+        for game_name in games:
+            game = self.db.get_game(game_name, check_alias=True)
+            if game is not None:
+                game_ids.append(game)
             else:
-                not_found.append(game)
+                not_found.append(game_name)
 
         return game_ids, not_found
 
@@ -174,15 +194,18 @@ class UMCPBot(commands.Cog):
         """
         games_per_group = 9
         misc_exclude = [game.strip() for game in misc_exclude.split(",")] if misc_exclude else []
-        misc_game_ids, not_found = self.games_to_ids(misc_exclude)
+        misc_games, not_found = self.names_to_games(misc_exclude)
 
         if not_found:
             await ctx.send(f"Unknown game(s): {', '.join(not_found)}")
             return
 
-        all_games = [id for id, (name, role_id) in sorted(self.db.games_cache.items(), key=lambda x: x[1][0]) if id not in misc_game_ids]
-        len_no_misc = len(all_games) # this is also the index of the first misc game
-        all_games.extend(misc_game_ids)
+        all_games = [game for game in self.db.games.values() if game not in misc_games]
+        all_games.sort(key=lambda g: g.name.casefold())
+
+        len_no_misc = len(all_games)  # this is also the index of the first misc game
+        all_games.extend(misc_games)
+
         for x in range(0, len(all_games), games_per_group):
             # if the last game in this group is a misc game, then this group has misc games
             has_misc = (x+games_per_group) - 1 >= len_no_misc and misc_exclude
@@ -194,8 +217,9 @@ class UMCPBot(commands.Cog):
             # If this category has misc games, we want to use the last non-misc game as the category last name
             last_game = all_games[len_no_misc - 1] if has_misc and not only_misc else games[-1]
             # we don't care if the first game is a misc game because then the category name will just be Misc. anyways.
-            first_name = self.db.games_cache[games[0]][0]
-            last_name = self.db.games_cache[last_game][0]
+            first_name = games[0].name
+            last_name = last_game.name
+
             category_name = f"{first_name[0].upper()}-{last_name[0].upper()}"
 
             if has_misc:
@@ -224,30 +248,29 @@ class UMCPBot(commands.Cog):
             await ctx.send(f"Too many roles in one message ({num}), max 10.")
             return
 
-        game_ids, not_found = self.games_to_ids(games)
+        game_objs, not_found = self.names_to_games(games)
         if not_found:
             await ctx.send(f"Unknown game(s): {', '.join(not_found)}")
             return
 
-        await self.create_role_message(category_name, game_ids)
+        await self.create_role_message(category_name, game_objs)
 
         if ctx.channel.id != self.role_channel.id:
             await ctx.send(f"Done. Role assignment messages were generated in {self.role_channel.mention}.")
 
-    async def create_role_message(self, name: str, game_ids: List[int]):
+    async def create_role_message(self, name: str, games: List[db.Game]):
         embed = discord.Embed(title=f"Role Assignment ({name}):",
                               description="React with the corresponding emojis to give yourself that role.\n\n",
                               type="rich", color=discord.Color.blue())
 
-        for x, id in enumerate(game_ids):
-            game_name = self.db.games_cache[id][0]
+        for x, game in enumerate(games):
             emoji = make_keypad(x)
-            embed.add_field(value=f"\u200b", name=f"{emoji} {game_name}", inline=True)
+            embed.add_field(value=f"\u200b", name=f"{emoji} {game.name}", inline=True)
 
         msg = await self.role_channel.send("\u200b\n", embed=embed)
-        self.db.add_role_message(msg.id, game_ids)
+        self.db.add_role_message(msg.id, [game.game_id for game in games])
 
-        for x in range(len(game_ids)):
+        for x in range(len(games)):
             emoji = make_keypad(x)
             await msg.add_reaction(emoji)
 
@@ -265,15 +288,42 @@ class UMCPBot(commands.Cog):
         return msg
 
     async def toggle_role(self, member: discord.Member, game_id: int):
-        game_name, role_id = self.db.games_cache[game_id]
-        role: discord.Role = self.umcp_server.get_role(role_id)
+        game = self.db.games[game_id]
+        role: discord.Role = self.umcp_server.get_role(game.role_id)
+        all_names: List[str] = [game.name]
 
-        if role in member.roles:
+        remove = role in member.roles
+
+        if remove:
             await member.remove_roles(role)
-            await self.role_channel.send(f"{member.mention}: Removed {game_name}", delete_after=3)
+
+            # if you remove a parent role, its sub roles should also be removed.
+            children = [self.db.games[id] for id in (self.db.get_sub_games(game.game_id) or [])]
+
+            if children:
+                sub_roles = [self.umcp_server.get_role(game.role_id) for game in children]
+                to_remove = [role for role in sub_roles if role in member.roles]
+                if to_remove:
+                    await member.remove_roles(*to_remove)
+                    all_names.extend(role.name for role in to_remove)
         else:
             await member.add_roles(role)
-            await self.role_channel.send(f"{member.mention}: Assigned {game_name}", delete_after=3)
+
+            # if you add a sub role, its parent role should also be added.
+            parent = self.db.get_parent_game(game_id)
+
+            if parent:
+                parent_role = self.umcp_server.get_role(self.db.games[parent].role_id)
+                if parent_role not in member.roles:
+                    await member.add_roles(parent_role)
+                    all_names.append(parent_role.name)
+
+        await self.role_channel.send(
+            f"{member.mention}: "
+            f"{'Removed' if remove else 'Assigned'} "
+            f"{', '.join(all_names)}",
+            delete_after=3
+        )
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
@@ -286,7 +336,7 @@ class UMCPBot(commands.Cog):
         if cd.update_rate_limit():
             return
 
-        game_ids = self.db.role_message_cache.get(payload.message_id)
+        game_ids = self.db.role_messages.get(payload.message_id)
         if not game_ids:
             return
 
@@ -303,7 +353,7 @@ class UMCPBot(commands.Cog):
         await msg.remove_reaction(payload.emoji, payload.member)
 
     """
-    Streamer Activity [Soon(TM)]
+    Streamer Activity
     """
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -332,6 +382,8 @@ class UMCPBot(commands.Cog):
 
         del self.db
         self.db = db.UMCPDB()
+
+
 
     # @commands.Cog.listener()
     # async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
