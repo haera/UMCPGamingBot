@@ -11,7 +11,7 @@ import plugins
 with open("config.json", "r") as f:
     config: dict = json.load(f)
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.presences = True
 intents.members = True
 
