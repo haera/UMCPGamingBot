@@ -54,6 +54,13 @@ class UMCPBot(commands.Cog):
         if success:
             await ctx.message.add_reaction("✅")
 
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def purgecache(self, ctx: commands.Context):
+        """Purge database cache
+        """
+        self.db._fetch_all()
+
     """
     Game/Alias Management
     """
@@ -94,7 +101,7 @@ class UMCPBot(commands.Cog):
     async def games(self, ctx: commands.Context):
         """Lists all games available to add"""
         game_names = (name for name, id in self.db.games_cache.values())
-        await ctx.send("Games:\n" + "\n".join(game_names))
+        await ctx.send("Games:\n" + "\n".join(sorted(game_names)))
 
     @commands.command()
     @commands.check(check_in_command_channel)
@@ -136,41 +143,106 @@ class UMCPBot(commands.Cog):
     """
     New Role Assignment
     """
+    def games_to_ids(self, games: List[str]) -> Tuple[List[int], List[str]]:
+        """Convert a list of game/alias names to a list of game row ids.
+
+        Args:
+            games (str): The comma seperated list of game/alias names
+
+        Returns:
+            List[int]: The list of game row ids
+            List[str]: The games that could not be found
+        """
+        game_ids = []
+        not_found = []
+        for game in games:
+            id: Optional[int] = self.db.get_game_id(game, check_alias=True)
+            if id is not None:
+                game_ids.append(id)
+            else:
+                not_found.append(game)
+
+        return game_ids, not_found
+
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def autogen(self, ctx: commands.Context, misc_exclude: Optional[str]=None):
+        """Automatically generate an alphabetical list of role assignment messages
+
+        <misc_exclude> => Comma separated list of games that are misc. and should be appended to the end.
+        """
+        misc_exclude = [game.strip() for game in misc_exclude.split(",")] if misc_exclude else []
+        misc_game_ids, not_found = self.games_to_ids(misc_exclude)
+
+        if not_found:
+            await ctx.send(f"Unknown game(s): {', '.join(not_found)}")
+            return
+
+        all_games = [id for id, (name, role_id) in sorted(self.db.games_cache.items(), key=lambda x: x[1][0]) if id not in misc_game_ids]
+        len_no_misc = len(all_games)
+        all_games.extend(misc_game_ids)
+        for x in range(0, len(all_games), 9):
+            has_misc = x+9 >= len_no_misc and misc_exclude
+            only_misc = x >= len_no_misc and misc_exclude
+
+            games = all_games[x:x+9]
+            first_name = self.db.games_cache[games[0]][0]
+            last_game = all_games[len_no_misc - 1] if has_misc and not only_misc else games[-1]
+            last_name = self.db.games_cache[last_game][0]
+            category_name = f"{first_name[0].upper()}-{last_name[0].upper()}"
+
+            if has_misc:
+                if only_misc:
+                    category_name = "Misc."
+                else:
+                    category_name += " + Misc."
+
+            await self.create_role_message(category_name, games)
+
+        if ctx.channel.id != self.role_channel.id:
+            await ctx.send(f"Done. Role assignment messages were generated in {self.role_channel.mention}.")
+
     @commands.command()
     @commands.check(check_is_admin)
     async def rolemessage(self, ctx: commands.Context, category_name: str, *, games: str):
-        """Create a role assignment message using reactions
+        """Manually create a role assignment message
 
         <category_name> => The title for this set of games
         <games> => A comma separated list of games this message should assign (max 10)
         """
-        games = [games.strip() for games in games.split(",")]
+        games = [game.strip() for game in games.split(",")]
+
         num = len(games)
         if num > 10:
             await ctx.send(f"Too many roles in one message ({num}), max 10.")
             return
 
-        game_ids = [self.db.get_game_id(game, check_alias=True) for game in games]
-        not_found = [games[x] for x, id in enumerate(game_ids) if id is None]
+        game_ids, not_found = self.games_to_ids(games)
         if not_found:
             await ctx.send(f"Unknown game(s): {', '.join(not_found)}")
             return
 
-        text = [f"**Role Assignment ({category_name}):**\nReact with the corresponding emojis to give yourself that role."]
-        for x, id in enumerate(game_ids):
-            game_name = self.db.games_cache[id][0]
-            emoji = make_keypad(x)
-            text.append(f"{emoji}: `{game_name}`")
-
-        msg = await self.role_channel.send('\n'.join(text))
-        self.db.add_role_message(msg.id, game_ids)
-
-        for x in range(num):
-            emoji = make_keypad(x)
-            await msg.add_reaction(emoji)
+        await self.create_role_message(category_name, game_ids)
 
         if ctx.channel.id != self.role_channel.id:
             await ctx.send(f"Done. Role assignment messages were generated in {self.role_channel.mention}.")
+
+    async def create_role_message(self, name: str, game_ids: List[int]):
+        embed = discord.Embed(title=f"Role Assignment ({name}):",
+                              description="React with the corresponding emojis to give yourself that role.\n\n",
+                              type="rich", color=discord.Color.blue())
+
+        for x, id in enumerate(game_ids):
+            game_name = self.db.games_cache[id][0]
+            emoji = make_keypad(x)
+            embed.add_field(value=f"\u200b", name=f"{emoji} {game_name}", inline=True)
+
+        msg = await self.role_channel.send("\u200b\n", embed=embed)
+        self.db.add_role_message(msg.id, game_ids)
+
+        for x in range(len(game_ids)):
+            emoji = make_keypad(x)
+            await msg.add_reaction(emoji)
 
     async def get_role_message(self, message_id: int) -> Optional[discord.Message]:
         msg = self.role_msgs.get(message_id)
