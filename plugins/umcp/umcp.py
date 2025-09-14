@@ -166,7 +166,7 @@ class UMCPBot(commands.Cog):
 
     @commands.command()
     @commands.check(check_is_admin)
-    async def autogen(self, ctx: commands.Context, misc_exclude: Optional[str]=None):
+    async def autogen(self, ctx: commands.Context, *, misc_exclude: Optional[str]=None):
         """Automatically generate an alphabetical list of role assignment messages
 
         <misc_exclude> => Comma separated list of games that are misc. and should be appended to the end.
