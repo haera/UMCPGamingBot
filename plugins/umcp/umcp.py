@@ -366,7 +366,7 @@ class UMCPBot(commands.Cog):
     Streamer Activity
     """
     @commands.Cog.listener()
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
+    async def on_presence_update(self, before: discord.Member, after: discord.Member):
         if any(activity.type == discord.ActivityType.streaming for activity in after.activities):
             await after.add_roles(self.streamer_role)
         elif any(activity.type == discord.ActivityType.streaming for activity in before.activities):
