@@ -1,4 +1,5 @@
 import importlib
+import asyncio
 
 from discord.ext import commands
 
@@ -10,5 +11,8 @@ def load_plugins(bot: commands.Bot, config: dict):
         modules.append(module)
         globals()[plugin] = module
 
-    for module in modules:
-        module.init(bot, config)
+    async def setup_plugins():
+        for module in modules:
+            await module.init(bot, config)
+
+    bot.loop.create_task(setup_plugins())

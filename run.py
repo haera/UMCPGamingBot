@@ -18,11 +18,12 @@ intents.members = True
 client = commands.Bot(command_prefix=commands.when_mentioned_or('!'), description="UMCP Bot",
                       pm_help=False, intents=intents)
 
-plugins.load_plugins(client, config)
+
 
 
 @client.event
 async def on_ready():
+    plugins.load_plugins(client, config)
     logger.info(f"Logged in. User: {client.user}, ID: {client.user.id}")
 
 

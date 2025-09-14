@@ -1,3 +1,4 @@
+import asyncio
 from discord.ext import commands
 
 config: dict = {}
