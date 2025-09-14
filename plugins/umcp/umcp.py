@@ -5,28 +5,15 @@ import discord
 from discord.ext import commands, tasks
 
 from . import db, config
-from .util import SpamLimit
-
-
-KEYPAD_UTF8 = b'\xef\xb8\x8f\xe2\x83\xa3'
-
-def make_keypad(num: int) -> Optional[str]:
-    if not (0 <= num <= 9):
-        return None
-    return (str(num).encode() + KEYPAD_UTF8).decode()
-
-def parse_keypad(emoji: str) -> Optional[int]:
-    b: bytes = emoji.encode()
-    if len(b) < 2 or b[1:] != KEYPAD_UTF8:
-        return None
-    num = int(chr(b[0]))
-    if not (0 <= num <= 9):
-        return None
-    return num
+from .util import SpamLimit, partition, make_keypad, parse_keypad
 
 
 def check_is_admin(ctx: commands.Context):
     return ctx.message.author.id in ctx.command.cog.db.admins_cache
+
+
+def check_in_command_channel(ctx: commands.Context):
+    return ctx.channel.id in config["command_channel_ids"]
 
 
 class UMCPBot(commands.Cog):
@@ -45,9 +32,9 @@ class UMCPBot(commands.Cog):
     Misc
     """
     @commands.command()
+    @commands.check(check_in_command_channel)
     async def ping(self, ctx: commands.Context):
-        """Ping!
-        """
+        """Ping!"""
         await ctx.send("Pong.")
 
     @commands.command()
@@ -100,7 +87,54 @@ class UMCPBot(commands.Cog):
             await ctx.send(str(e))
 
     """
-    Role Assignment
+    Old Role Assignment
+    """
+    @commands.command()
+    @commands.check(check_in_command_channel)
+    async def games(self, ctx: commands.Context):
+        """Lists all games available to add"""
+        game_names = (name for name, id in self.db.games_cache.values())
+        await ctx.send("Games:\n" + "\n".join(game_names))
+
+    @commands.command()
+    @commands.check(check_in_command_channel)
+    async def addgame(self, ctx: commands.Context, *, games: str):
+        """Adds the role for a game to the user
+
+        <games> => Comma separated list of games to add
+        """
+        await self.set_games(ctx, games.split(","), add=True)
+
+    @commands.command()
+    @commands.check(check_in_command_channel)
+    async def removegame(self, ctx: commands.Context, *, games: str):
+        """Removes the role for a game from the user
+
+         <games> => Comma separated list of games to remove
+        """
+        await self.set_games(ctx, games.split(","), add=False)
+
+    async def set_games(self, ctx: commands.Context, games: List[str], add: bool):
+        game_ids = (self.db.get_game_id(game.strip(), check_alias=True) for game in games)
+        valid, invalid = partition(enumerate(game_ids), lambda x: x[1] is None)
+
+        if valid:
+            valid_games = [self.db.games_cache[id] for x, id in valid]
+            roles = (self.umcp_server.get_role(role_id) for name, role_id in valid_games)
+            valid_names = ', '.join(name for name, _ in valid_games)
+            if add:
+                await ctx.author.add_roles(*roles)
+                await ctx.send(f"Added games: {valid_names} to {ctx.author.mention}")
+            else:
+                await ctx.author.remove_roles(*roles)
+                await ctx.send(f"Removed games: {valid_names} from {ctx.author.mention}")
+
+        if invalid:
+            invalid_names = ', '.join(games[x] for x, _ in invalid)
+            await ctx.send(f"Could not find games: {invalid_names}")
+
+    """
+    New Role Assignment
     """
     @commands.command()
     @commands.check(check_is_admin)
@@ -108,13 +142,13 @@ class UMCPBot(commands.Cog):
         """Create a role assignment message using reactions
 
         <category_name> => The title for this set of games
-        <games> => A semicolon separated list of games this message should assign (max 10)
+        <games> => A comma separated list of games this message should assign (max 10)
         """
         if ctx.channel.id != self.role_channel.id:
             await ctx.send(f"Role assignment messages can only be generated in {self.role_channel.mention}.")
             return
 
-        games = [games.strip() for games in games.split(";")]
+        games = [games.strip() for games in games.split(",")]
         num = len(games)
         if num > 10:
             await ctx.send(f"Too many roles in one message ({num}), max 10.")
@@ -123,7 +157,7 @@ class UMCPBot(commands.Cog):
         game_ids = [self.db.get_game_id(game, check_alias=True) for game in games]
         not_found = [games[x] for x, id in enumerate(game_ids) if id is None]
         if not_found:
-            await ctx.send(f"Unknown game(s): {'; '.join(not_found)}")
+            await ctx.send(f"Unknown game(s): {', '.join(not_found)}")
             return
 
         text = [f"**Role Assignment ({category_name}):**\nReact with the corresponding emojis to give yourself that role."]

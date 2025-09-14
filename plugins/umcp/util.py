@@ -1,6 +1,6 @@
 import collections
 import time
-from typing import Dict, Any
+from typing import Any, Callable, Dict, Iterable, TypeVar, Tuple, List, Optional
 
 from discord.ext import commands
 
@@ -57,3 +57,28 @@ class SpamLimit:
             bucket = self._cache[user_id]
 
         return bucket
+
+
+T = TypeVar('T')
+def partition(iterable: Iterable[T], predicate: Callable[[T], bool]) -> Tuple[List[T], List[T]]:
+    ret = ([], [])
+    for x in iterable:
+        ret[predicate(x)].append(x)
+    return ret
+
+
+KEYPAD_UTF8 = b'\xef\xb8\x8f\xe2\x83\xa3'
+
+def make_keypad(num: int) -> Optional[str]:
+    if not (0 <= num <= 9):
+        return None
+    return (str(num).encode() + KEYPAD_UTF8).decode()
+
+def parse_keypad(emoji: str) -> Optional[int]:
+    b: bytes = emoji.encode()
+    if len(b) < 2 or b[1:] != KEYPAD_UTF8:
+        return None
+    num = int(chr(b[0]))
+    if not (0 <= num <= 9):
+        return None
+    return num
