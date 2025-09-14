@@ -29,6 +29,9 @@ class UMCPBot(commands.Cog):
         self.role_channel: discord.TextChannel = None
         self.streamer_role: discord.Role = None
 
+    def cog_unload(self):
+        self.role_channel_cleanup.cancel()
+
     """
     Misc
     """
@@ -383,12 +386,28 @@ class UMCPBot(commands.Cog):
         del self.db
         self.db = db.UMCPDB()
 
+        self.role_channel_cleanup.start()
 
+    @tasks.loop(minutes=10.0)
+    async def role_channel_cleanup(self):
+        # clean up any messages after role request messages that may have been lingering for a while
+        most_recent = sorted(self.db.role_messages.keys())[-1]
+        await self.role_channel.purge(after=discord.Object(most_recent))
 
-    # @commands.Cog.listener()
-    # async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
-    #     if payload.channel_id != self.role_channel.id:
-    #         return
-    #
-    #     if payload.message_id in self.db.role_message_cache:
-    #         self.db.remove_role_message(payload.message_id)
+        # clean up any un-removed reactions
+        for msg in self.role_msgs.values():
+            reacts = msg.reactions
+            for r in reacts:
+                # if the bot's reaction is the only one, we're good
+                if r.count == 1 and r.me:
+                    continue
+
+                # if not, make sure the bot still has a reaction to the message
+                if not r.me:
+                    await msg.add_reaction(r.emoji)
+
+                # then, remove all reactions that don't belong to the bot
+                u: Union[discord.User, discord.Member]
+                async for u in r.users():
+                    if u != self.client.user:
+                        await r.remove(u)
