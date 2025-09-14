@@ -144,10 +144,6 @@ class UMCPBot(commands.Cog):
         <category_name> => The title for this set of games
         <games> => A comma separated list of games this message should assign (max 10)
         """
-        if ctx.channel.id != self.role_channel.id:
-            await ctx.send(f"Role assignment messages can only be generated in {self.role_channel.mention}.")
-            return
-
         games = [games.strip() for games in games.split(",")]
         num = len(games)
         if num > 10:
@@ -166,12 +162,15 @@ class UMCPBot(commands.Cog):
             emoji = make_keypad(x)
             text.append(f"{emoji}: `{game_name}`")
 
-        msg = await ctx.send('\n'.join(text))
+        msg = await self.role_channel.send('\n'.join(text))
         self.db.add_role_message(msg.id, game_ids)
 
         for x in range(num):
             emoji = make_keypad(x)
             await msg.add_reaction(emoji)
+
+        if ctx.channel.id != self.role_channel.id:
+            await ctx.send(f"Done. Role assignment messages were generated in {self.role_channel.mention}.")
 
     async def get_role_message(self, message_id: int) -> Optional[discord.Message]:
         msg = self.role_msgs.get(message_id)
