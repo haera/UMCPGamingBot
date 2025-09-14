@@ -165,13 +165,14 @@ class UMCPDB(object):
             return True
 
     def remove_game(self, game_name: str):
+        game_name = game_name.lower()
         game_row_id = self.get_game_id(game_name, check_alias=True)
         if not game_row_id:
             return False
 
         with self.conn, self.conn.cursor() as cur:
             cur.execute("DELETE FROM aliases WHERE game_id=%s RETURNING id;", (game_row_id, ))
-            for alias_row_id in cur.fetchall():
+            for alias_row_id, in cur.fetchall():
                 self.__aliases.pop(alias_row_id)
             cur.execute("DELETE FROM games WHERE name ILIKE %s;", (game_name,))
             self.__games.pop(game_row_id)
