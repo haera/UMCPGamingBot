@@ -138,7 +138,7 @@ class UMCPBot(commands.Cog):
     """
     @commands.command()
     @commands.check(check_is_admin)
-    async def roleassign(self, ctx: commands.Context, category_name: str, *, games: str):
+    async def rolemessage(self, ctx: commands.Context, category_name: str, *, games: str):
         """Create a role assignment message using reactions
 
         <category_name> => The title for this set of games
