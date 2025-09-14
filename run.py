@@ -3,6 +3,7 @@ import json
 import logging
 import os
 
+import discord
 from discord.ext import commands
 
 import plugins
@@ -10,8 +11,12 @@ import plugins
 with open("config.json", "r") as f:
     config: dict = json.load(f)
 
+intents = discord.Intents.default()
+intents.presences = True
+intents.members = True
+
 client = commands.Bot(command_prefix=commands.when_mentioned_or('!'), description="UMCP Bot",
-                      pm_help=False)
+                      pm_help=False, intents=intents)
 
 plugins.load_plugins(client, config)
 
