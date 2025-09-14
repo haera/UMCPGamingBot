@@ -19,8 +19,6 @@ client = commands.Bot(command_prefix=commands.when_mentioned_or('!'), descriptio
                       pm_help=False, intents=intents)
 
 
-
-
 @client.event
 async def on_ready():
     plugins.load_plugins(client, config)
