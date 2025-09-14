@@ -369,6 +369,7 @@ class UMCPBot(commands.Cog):
         member: discord.Member
         async for member in self.umcp_server.fetch_members():
             if any(activity.type == discord.ActivityType.streaming for activity in member.activities):
+                print(f"Found streamer: {member}")
                 await member.add_roles(self.streamer_role)
             else:
                 await member.remove_roles(self.streamer_role)
