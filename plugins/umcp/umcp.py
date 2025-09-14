@@ -172,6 +172,7 @@ class UMCPBot(commands.Cog):
 
         <misc_exclude> => Comma separated list of games that are misc. and should be appended to the end.
         """
+        games_per_group = 9
         misc_exclude = [game.strip() for game in misc_exclude.split(",")] if misc_exclude else []
         misc_game_ids, not_found = self.games_to_ids(misc_exclude)
 
@@ -180,15 +181,20 @@ class UMCPBot(commands.Cog):
             return
 
         all_games = [id for id, (name, role_id) in sorted(self.db.games_cache.items(), key=lambda x: x[1][0]) if id not in misc_game_ids]
-        len_no_misc = len(all_games)
+        len_no_misc = len(all_games) # this is also the index of the first misc game
         all_games.extend(misc_game_ids)
-        for x in range(0, len(all_games), 9):
-            has_misc = x+9 >= len_no_misc and misc_exclude
+        for x in range(0, len(all_games), games_per_group):
+            # if the last game in this group is a misc game, then this group has misc games
+            has_misc = (x+games_per_group) - 1 >= len_no_misc and misc_exclude
+            # if the first game in this group is a misc game, then this group **only** has misc games.
             only_misc = x >= len_no_misc and misc_exclude
+            # games in this group
+            games = all_games[x:x+games_per_group]
 
-            games = all_games[x:x+9]
-            first_name = self.db.games_cache[games[0]][0]
+            # If this category has misc games, we want to use the last non-misc game as the category last name
             last_game = all_games[len_no_misc - 1] if has_misc and not only_misc else games[-1]
+            # we don't care if the first game is a misc game because then the category name will just be Misc. anyways.
+            first_name = self.db.games_cache[games[0]][0]
             last_name = self.db.games_cache[last_game][0]
             category_name = f"{first_name[0].upper()}-{last_name[0].upper()}"
 
