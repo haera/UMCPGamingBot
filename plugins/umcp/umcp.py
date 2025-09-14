@@ -299,12 +299,12 @@ class UMCPBot(commands.Cog):
     """
     Streamer Activity [Soon(TM)]
     """
-    # @commands.Cog.listener()
-    # async def on_member_update(self, before: discord.Member, after: discord.Member):
-    #     if after.activity and after.activity.type == discord.ActivityType.streaming:
-    #         await after.add_roles(self.streamer_role)
-    #     elif before.activity and before.activity.type == discord.ActivityType.streaming:
-    #         await after.remove_roles(self.streamer_role)
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        if after.activity and after.activity.type == discord.ActivityType.streaming:
+            await after.add_roles(self.streamer_role)
+        elif before.activity and before.activity.type == discord.ActivityType.streaming:
+            await after.remove_roles(self.streamer_role)
 
     """
     Greeting
