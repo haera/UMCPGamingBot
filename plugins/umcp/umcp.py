@@ -31,9 +31,9 @@ class UMCPBot(commands.Cog):
         self.umcp_server: discord.Guild = self.client.get_guild(config["guild_id"])
         self.role_channel: discord.TextChannel = self.umcp_server.get_channel(config["role_channel_id"])
         self.streamer_role: discord.Role = self.umcp_server.get_role(config["streamer_role_id"])
-        
+
         self.role_channel_cleanup.start()
-        await self.check_streaming_role()
+        #await self.check_streaming_role()
 
     def cog_unload(self):
         self.role_channel_cleanup.cancel()
