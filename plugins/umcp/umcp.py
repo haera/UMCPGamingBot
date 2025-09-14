@@ -360,10 +360,18 @@ class UMCPBot(commands.Cog):
     """
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if after.activity and after.activity.type == discord.ActivityType.streaming:
+        if any(activity.type == discord.ActivityType.streaming for activity in after.activities):
             await after.add_roles(self.streamer_role)
-        elif before.activity and before.activity.type == discord.ActivityType.streaming:
+        elif any(activity.type == discord.ActivityType.streaming for activity in before.activities):
             await after.remove_roles(self.streamer_role)
+
+    async def check_streaming_role(self):
+        member: discord.Member
+        async for member in self.umcp_server.fetch_members():
+            if any(activity.type == discord.ActivityType.streaming for activity in member.activities):
+                await member.add_roles(self.streamer_role)
+            else:
+                await member.remove_roles(self.streamer_role)
 
     """
     Greeting
@@ -387,6 +395,7 @@ class UMCPBot(commands.Cog):
         self.db = db.UMCPDB()
 
         self.role_channel_cleanup.start()
+        await self.check_streaming_role()
 
     @tasks.loop(minutes=10.0)
     async def role_channel_cleanup(self):
