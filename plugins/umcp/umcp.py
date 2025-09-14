@@ -393,6 +393,8 @@ class UMCPBot(commands.Cog):
         self.role_channel: discord.TextChannel = self.umcp_server.get_channel(config["role_channel_id"])
         self.streamer_role: discord.Role = self.umcp_server.get_role(config["streamer_role_id"])
         console.log("working");
+        console.log(self.umcp_server);
+        console.log(self.client.get_guild(config["guild_id"]));
 
         del self.db
         self.db = db.UMCPDB()
