@@ -4,6 +4,7 @@ from typing import *
 import discord
 from discord.ext import commands, tasks
 
+
 from . import db, config
 from .util import SpamLimit, partition, make_keypad, parse_keypad
 
@@ -23,7 +24,7 @@ class UMCPBot(commands.Cog):
         self.db: db.UMCPDB = None
 
         self.role_msgs: Dict[int, discord.Message] = {}
-        self.role_assign_cooldown = SpamLimit(commands.Cooldown(rate=30, per=120, bucket_type=commands.BucketType.user))
+        #self.role_assign_cooldown = SpamLimit(commands.Cooldown(rate=30, per=120, bucket_type=commands.BucketType.user))
 
         self.umcp_server: discord.Guild = None
         self.role_channel: discord.TextChannel = None
@@ -335,9 +336,9 @@ class UMCPBot(commands.Cog):
         if payload.channel_id != self.role_channel.id:
             return
 
-        cd = self.role_assign_cooldown.get_user(payload.user_id)
-        if cd.update_rate_limit():
-            return
+        #cd = self.role_assign_cooldown.get_user(payload.user_id)
+        #if cd.update_rate_limit():
+        #    return
 
         game_ids = self.db.role_messages.get(payload.message_id)
         if not game_ids:
