@@ -21,7 +21,7 @@ class UMCPBot(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
 
-        self.db: db.UMCPDB()
+        self.db = db.UMCPDB()
 
         self.role_msgs: Dict[int, discord.Message] = {}
         #self.role_assign_cooldown = SpamLimit(commands.Cooldown(rate=30, per=120, bucket_type=commands.BucketType.user))
