@@ -1,6 +1,6 @@
 {
   "bot":{
-    "discord_token": "MzExNjczNzEyNTA2MzA2NTcy.XvZoGg.62K0TuSQBIWNNuhu2hf4AKGfuvo"
+    "maintainer_id": 79781855171186688
   },
   "plugins": ["debug", "umcp"],
   "plugins.umcp": {

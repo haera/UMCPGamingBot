@@ -18,19 +18,25 @@ md: Pattern = re.compile(r"^(([ \t]*`{3,4})([^\n]*)(?P<code>[\s\S]+?)(^[ \t]*\2)
 logger = logging.getLogger(__name__)
 
 
+def is_maintainer(ctx):
+    return ctx.author.id == BotDebug.maintainer_id
+
+
 class BotDebug(commands.Cog):
+    maintainer_id: Optional[int] = None
+
     def __init__(self, client: commands.Bot):
         self.client = client
         self.last_eval = None
 
     @commands.command(hidden=True)
-    @commands.check(commands.is_owner())
+    @commands.check_any(commands.is_owner(), commands.check(is_maintainer))
     async def exec(self, ctx: commands.Context, *, cmd: str):
         result, stdout, stderr = await self.run(ctx, cmd, use_exec=True)
         await self.send_output(ctx, result, stdout, stderr)
 
     @commands.command(hidden=True)
-    @commands.check(commands.is_owner())
+    @commands.check_any(commands.is_owner(), commands.check(is_maintainer))
     async def eval(self, ctx: commands.Context, *, cmd: str):
         scope = {"_": self.last_eval, "last": self.last_eval}
         result, stdout, stderr = await self.run(ctx, cmd, use_exec=False, extra_scope=scope)
@@ -38,8 +44,8 @@ class BotDebug(commands.Cog):
         await self.send_output(ctx, result, stdout, stderr)
 
     async def send_output(self, ctx: commands.Context, result: str, stdout: str, stderr: str):
-        print(result, stdout, stderr)
         if result is not None:
+            logger.info(f"exec result: \n{result}")
             await ctx.send(f"Result: `{result}`")
         if stdout:
             logger.info(f"exec stdout: \n{stdout}")
@@ -51,7 +57,7 @@ class BotDebug(commands.Cog):
             await self.send_split(ctx, stderr)
 
     async def run(self, ctx: commands.Context, cmd: str, use_exec: bool, extra_scope: dict=None) -> Tuple[Any, str, str]:
-        if not await self.client.is_owner(ctx.author):
+        if not (await self.client.is_owner(ctx.author) or is_maintainer(ctx)):
             return None, "", ""
 
         # note: exec/eval inserts __builtins__ if a custom version is not defined (or set to {} or whatever)
@@ -98,7 +104,6 @@ class BotDebug(commands.Cog):
     async def send_split(self, ctx: commands.Context, text: str, *, prefix="```\n", postfix="\n```"):
         max_len = 2000 - (len(prefix) + len(postfix))
         text: List[str] = [text[x:x + max_len] for x in range(0, len(text), max_len)]
-        print(text)
         for message in text:
             await ctx.send(f"{prefix}{message}{postfix}")
 
@@ -115,5 +120,6 @@ def std_redirect():
 
 
 def init(bot: commands.Bot, cfg: dict):
+    BotDebug.maintainer_id = cfg["bot"].get("maintainer_id", -1)
     bot.add_cog(BotDebug(bot))
 

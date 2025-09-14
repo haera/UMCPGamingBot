@@ -90,15 +90,14 @@ class UMCPBot(commands.Cog):
     async def registeralias(self, ctx: commands.Context, alias: str, game: str):
         """Registers an alias for a game in the db
 
-        <name> => The name of the game
-        <role> => The role id or @mention
+        <alias> => The alias name
+        <game> => The name of the game to alias
         """
-        success = self.db.add_alias(game, alias)
-
-        if success:
+        try:
+            self.db.add_alias(game, alias)
             await ctx.message.add_reaction("✅")
-        else:
-            await ctx.send(f"An alias with the name '{alias}' already exists/The game '{game}' doesn't exist.")
+        except db.DBError as e:
+            await ctx.send(str(e))
 
     """
     Role Assignment
@@ -114,7 +113,6 @@ class UMCPBot(commands.Cog):
         if ctx.channel.id != self.role_channel.id:
             await ctx.send(f"Role assignment messages can only be generated in {self.role_channel.mention}.")
             return
-
 
         games = [games.strip() for games in games.split(";")]
         num = len(games)
@@ -199,8 +197,6 @@ class UMCPBot(commands.Cog):
 
         del self.db
         self.db = db.UMCPDB()
-
-        await self.client.change_presence(activity=discord.Game(name="test test test"))
 
     # @commands.Cog.listener()
     # async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):

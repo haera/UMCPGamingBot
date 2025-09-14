@@ -7,8 +7,12 @@ import discord.utils
 
 from .util import MappingProxy
 
-
 DEV_URL = "https://postgres:lol@localhost:5432/postgres"
+
+
+class DBError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
 
 
 # Really, this is just persistent storage at this point.
@@ -173,13 +177,15 @@ class UMCPDB(object):
             self.__games.pop(game_row_id)
             return True
 
-    def add_alias(self, game_name: str, alias_name: str):
+    def add_alias(self, game_name: str, alias_name: str) -> bool:
+        if alias_name.lower() in (game[0].lower() for game in self.games_cache.values()):
+            raise DBError(f"A game with the name {alias_name} already exists.")
         if alias_name.lower() in (alias[0].lower() for alias in self.aliases_cache.values()):
-            return False
+            raise DBError(f"An alias with the name {alias_name} already exists.")
 
         game_row_id = self.get_game_id(game_name)
         if game_row_id is None:
-            return False
+            raise DBError(f"There is no game with the name {game_name}.")
 
         with self.conn, self.conn.cursor() as cur:
             cur.execute("INSERT INTO aliases (game_id, alias) VALUES (%s, %s) RETURNING id;", (game_row_id, alias_name))
@@ -187,7 +193,7 @@ class UMCPDB(object):
             self.__aliases[alias_row_id] = (alias_name, game_row_id)
             return True
 
-    def remove_alias(self, alias_name: str):
+    def remove_alias(self, alias_name: str) -> bool:
         if alias_name.lower() not in (alias[0].lower() for alias in self.aliases_cache.values()):
             return False
 

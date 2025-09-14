@@ -1,6 +1,7 @@
 #!python3
 import json
 import logging
+import os
 
 from discord.ext import commands
 
@@ -37,4 +38,6 @@ if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s::%(name)s::%(levelname)s::%(message)s', level=logging.INFO)
     logger = logging.getLogger('UMCPBot')
     logger.info("Logging in...")
-    client.run(config["bot"]["discord_token"])
+
+    token = os.environ.get("DISCORD_TOKEN") or config["bot"]["discord_token"]
+    client.run(token)
