@@ -2,7 +2,7 @@
   "bot":{
     "maintainer_id": 79781855171186688
   },
-  "plugins": ["umcp", "debug"],
+  "plugins": ["umcp"],
   "plugins.umcp": {
     "guild_id": 348919724635324419,
     "role_channel_id": 717548607049564190,
