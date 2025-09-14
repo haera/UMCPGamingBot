@@ -1,0 +1,10 @@
+{
+  "bot":{
+    "discord_token": "MzExNjczNzEyNTA2MzA2NTcy.XvZoGg.62K0TuSQBIWNNuhu2hf4AKGfuvo"
+  },
+  "plugins": ["debug", "umcp"],
+  "plugins.umcp": {
+    "guild_id": 272459105682063368,
+    "role_channel_id": 726736827670593606
+  }
+}

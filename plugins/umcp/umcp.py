@@ -1,0 +1,211 @@
+
+from typing import *
+
+import discord
+from discord.ext import commands, tasks
+
+from . import db, config
+from .util import SpamLimit
+
+
+KEYPAD_UTF8 = b'\xef\xb8\x8f\xe2\x83\xa3'
+
+def make_keypad(num: int) -> Optional[str]:
+    if not (0 <= num <= 9):
+        return None
+    return (str(num).encode() + KEYPAD_UTF8).decode()
+
+def parse_keypad(emoji: str) -> Optional[int]:
+    b: bytes = emoji.encode()
+    if len(b) < 2 or b[1:] != KEYPAD_UTF8:
+        return None
+    num = int(chr(b[0]))
+    if not (0 <= num <= 9):
+        return None
+    return num
+
+
+def check_is_admin(ctx: commands.Context):
+    return ctx.message.author.id in ctx.command.cog.db.admins_cache
+
+
+class UMCPBot(commands.Cog):
+    def __init__(self, client: commands.Bot):
+        self.client = client
+
+        self.db: db.UMCPDB = None
+
+        self.role_msgs: Dict[int, discord.Message] = {}
+        self.role_assign_cooldown = SpamLimit(commands.Cooldown(rate=30, per=120, type=commands.BucketType.user))
+
+        self.umcp_server: discord.Guild = None
+        self.role_channel: discord.TextChannel = None
+
+    """
+    Misc
+    """
+    @commands.command()
+    async def ping(self, ctx: commands.Context):
+        """Ping!
+        """
+        await ctx.send("Pong.")
+
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def admin(self, ctx: commands.Context, action: str, discord_id: int):
+        """Adds or removes an admin
+
+        <action> => add|remove
+        <discord_id> => The discord id of the user to add or remove as an admin.
+        """
+        success = False
+        if action == "add":
+            success = self.db.add_admin(discord_id)
+        elif action == "remove":
+            success = self.db.remove_admin(discord_id)
+
+        if success:
+            await ctx.message.add_reaction("✅")
+
+    """
+    Game/Alias Management
+    """
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def registergame(self, ctx: commands.Context, name: str, role: discord.Role):
+        """Registers a new game in the db
+
+        <name> => The name of the game
+        <role> => The role id or @mention
+        """
+        success = self.db.add_game(name, role.id)
+
+        if success:
+            await ctx.message.add_reaction("✅")
+        else:
+            await ctx.send(f"A game with the name '{name}' already exists.")
+
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def registeralias(self, ctx: commands.Context, alias: str, game: str):
+        """Registers an alias for a game in the db
+
+        <name> => The name of the game
+        <role> => The role id or @mention
+        """
+        success = self.db.add_alias(game, alias)
+
+        if success:
+            await ctx.message.add_reaction("✅")
+        else:
+            await ctx.send(f"An alias with the name '{alias}' already exists/The game '{game}' doesn't exist.")
+
+    """
+    Role Assignment
+    """
+    @commands.command()
+    @commands.check(check_is_admin)
+    async def roleassign(self, ctx: commands.Context, category_name: str, *, games: str):
+        """Create a role assignment message using reactions
+
+        <category_name> => The title for this set of games
+        <games> => A semicolon separated list of games this message should assign (max 10)
+        """
+        if ctx.channel.id != self.role_channel.id:
+            await ctx.send(f"Role assignment messages can only be generated in {self.role_channel.mention}.")
+            return
+
+
+        games = [games.strip() for games in games.split(";")]
+        num = len(games)
+        if num > 10:
+            await ctx.send(f"Too many roles in one message ({num}), max 10.")
+            return
+
+        game_ids = [self.db.get_game_id(game, check_alias=True) for game in games]
+        not_found = [games[x] for x, id in enumerate(game_ids) if id is None]
+        if not_found:
+            await ctx.send(f"Unknown game(s): {'; '.join(not_found)}")
+            return
+
+        text = [f"**Role Assignment ({category_name}):**\nReact with the corresponding emojis to give yourself that role."]
+        for x, id in enumerate(game_ids):
+            game_name = self.db.games_cache[id][0]
+            emoji = make_keypad(x)
+            text.append(f"{emoji}: `{game_name}`")
+
+        msg = await ctx.send('\n'.join(text))
+        self.db.add_role_message(msg.id, game_ids)
+
+        for x in range(num):
+            emoji = make_keypad(x)
+            await msg.add_reaction(emoji)
+
+    async def get_role_message(self, message_id: int) -> Optional[discord.Message]:
+        msg = self.role_msgs.get(message_id)
+        if msg is not None:
+            return msg
+
+        try:
+            msg = await self.role_channel.fetch_message(message_id)
+        except discord.NotFound:
+            self.db.remove_role_message(message_id)
+            return None
+        self.role_msgs[message_id] = msg
+        return msg
+
+    async def toggle_role(self, member: discord.Member, game_id: int):
+        game_name, role_id = self.db.games_cache[game_id]
+        role: discord.Role = self.umcp_server.get_role(role_id)
+
+        if role in member.roles:
+            await member.remove_roles(role)
+            await self.role_channel.send(f"{member.mention}: Removed {game_name}", delete_after=3)
+        else:
+            await member.add_roles(role)
+            await self.role_channel.send(f"{member.mention}: Assigned {game_name}", delete_after=3)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        if payload.user_id == self.client.user.id:
+            return
+        if payload.channel_id != self.role_channel.id:
+            return
+
+        cd = self.role_assign_cooldown.get_user(payload.user_id)
+        if cd.update_rate_limit():
+            return
+
+        game_ids = self.db.role_message_cache.get(payload.message_id)
+        if not game_ids:
+            return
+
+        msg = await self.get_role_message(payload.message_id)
+        if not msg:
+            return
+
+        num = parse_keypad(payload.emoji.name)
+        if num is None or not (0 <= num < len(game_ids)):
+            await msg.clear_reaction(payload.emoji)
+            return
+
+        await self.toggle_role(payload.member, game_ids[num])
+        await msg.remove_reaction(payload.emoji, payload.member)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        self.umcp_server: discord.Guild = self.client.get_guild(config["guild_id"])
+        self.role_channel: discord.TextChannel = self.umcp_server.get_channel(config["role_channel_id"])
+
+        del self.db
+        self.db = db.UMCPDB()
+
+        await self.client.change_presence(activity=discord.Game(name="test test test"))
+
+    # @commands.Cog.listener()
+    # async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
+    #     if payload.channel_id != self.role_channel.id:
+    #         return
+    #
+    #     if payload.message_id in self.db.role_message_cache:
+    #         self.db.remove_role_message(payload.message_id)

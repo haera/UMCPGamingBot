@@ -1,0 +1,6 @@
+# Python 3 byte code stuff
+__pycache__/
+
+# IDE crap
+.idea/
+.vs/
