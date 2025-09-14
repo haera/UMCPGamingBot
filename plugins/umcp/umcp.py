@@ -382,7 +382,7 @@ class UMCPBot(commands.Cog):
         await member.send(
             f"Welcome to UMCP Gaming, {member.mention}! To get started, head over to {self.role_channel.mention} and "
             f"add games by reacting to the messages. Once you do so, you can view and interact with each game's "
-            f"voice and text channels."
+            f"voice and text channels. <3 -speep"
         )
 
 
