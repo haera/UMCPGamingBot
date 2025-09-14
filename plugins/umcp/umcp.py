@@ -297,14 +297,25 @@ class UMCPBot(commands.Cog):
         await msg.remove_reaction(payload.emoji, payload.member)
 
     """
-    Streamer Activity
+    Streamer Activity [Soon(TM)]
+    """
+    # @commands.Cog.listener()
+    # async def on_member_update(self, before: discord.Member, after: discord.Member):
+    #     if after.activity and after.activity.type == discord.ActivityType.streaming:
+    #         await after.add_roles(self.streamer_role)
+    #     elif before.activity and before.activity.type == discord.ActivityType.streaming:
+    #         await after.remove_roles(self.streamer_role)
+
+    """
+    Greeting
     """
     @commands.Cog.listener()
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if after.activity and after.activity.type == discord.ActivityType.streaming:
-            await after.add_roles(self.streamer_role)
-        elif before.activity and before.activity.type == discord.ActivityType.streaming:
-            await after.remove_roles(self.streamer_role)
+    async def on_member_join(self, member: discord.Member):
+        await member.send(
+            f"Welcome to UMCP Gaming, {member.mention}! To get started, head over to {self.role_channel.mention} and "
+            f"add games by reacting to the messages. Once you do so, you can view and interact with each game's "
+            f"voice and text channels."
+        )
 
 
     @commands.Cog.listener()
