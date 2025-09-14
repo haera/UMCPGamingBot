@@ -27,6 +27,7 @@ class UMCPBot(commands.Cog):
 
         self.umcp_server: discord.Guild = None
         self.role_channel: discord.TextChannel = None
+        self.streamer_role: discord.Role = None
 
     """
     Misc
@@ -295,10 +296,22 @@ class UMCPBot(commands.Cog):
         await self.toggle_role(payload.member, game_ids[num])
         await msg.remove_reaction(payload.emoji, payload.member)
 
+    """
+    Streamer Activity
+    """
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        if after.activity and after.activity.type == discord.ActivityType.streaming:
+            await after.add_roles(self.streamer_role)
+        elif before.activity and before.activity.type == discord.ActivityType.streaming:
+            await after.remove_roles(self.streamer_role)
+
+
     @commands.Cog.listener()
     async def on_ready(self):
         self.umcp_server: discord.Guild = self.client.get_guild(config["guild_id"])
         self.role_channel: discord.TextChannel = self.umcp_server.get_channel(config["role_channel_id"])
+        self.streamer_role: discord.Role = self.umcp_server.get_role(config["streamer_role_id"])
 
         del self.db
         self.db = db.UMCPDB()

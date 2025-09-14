@@ -6,6 +6,7 @@
   "plugins.umcp": {
     "guild_id": 348919724635324419,
     "role_channel_id": 717548607049564190,
-    "command_channel_ids": [349781614877999104, 646521417805856768]
+    "command_channel_ids": [349781614877999104, 646521417805856768],
+    "streamer_role_id": 366289471081152512
   }
 }
